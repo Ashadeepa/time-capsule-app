@@ -12,7 +12,7 @@ with real email delivery.
   `capsules` table (see `db/schema.sql`)
 - **Resend** — email delivery
 - **Vercel Blob** — photo/audio/video attachment storage
-- **Anthropic API** (optional) — drafts a letter from a few reflective prompts
+- **Gemini API** (optional) — drafts a letter from a few reflective prompts
 - **Tailwind CSS** — styling
 
 A note on the "no ORM" choice: Prisma was the original plan, but its engine binaries are fetched
@@ -144,12 +144,13 @@ button and the daily cron job spawn the next one identically (they share `delive
 
 ## Guided-writing agent
 
-Blank-page paralysis is a real drop-off point for a "write a letter" product. If `ANTHROPIC_API_KEY`
+Blank-page paralysis is a real drop-off point for a "write a letter" product. If `GEMINI_API_KEY`
 is set, a "Not sure what to write? Let us help" toggle appears on the write form — three reflective
-prompts, answered, sent to `src/app/api/draft-letter/route.ts`, which asks Claude
-(`claude-opus-5`) to draft a letter from them. The draft lands in the same editable textarea; it's
-never submitted without the user reviewing and clicking "Seal & schedule" themselves. Without the
-key, the toggle simply doesn't render — the rest of the app is unaffected.
+prompts, answered, sent to `src/app/api/draft-letter/route.ts`, which asks Gemini
+(`gemini-2.5-flash`, via `@google/genai`) to draft a letter from them. Get a key at
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey). The draft lands in the same
+editable textarea; it's never submitted without the user reviewing and clicking "Seal & schedule"
+themselves. Without the key, the toggle simply doesn't render — the rest of the app is unaffected.
 
 ## What's intentionally left out
 

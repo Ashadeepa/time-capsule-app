@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 
 const PROMPTS = [
   "What's happening in your life right now that you want to remember?",
@@ -14,16 +14,16 @@ not a greeting card). Weave the person's answers into flowing prose rather than 
 a list. Keep it to 2-4 short paragraphs. Output only the letter body — no greeting like "Dear
 future me" unless it fits naturally, no signature, no preamble or explanation.`;
 
-const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 // The write form checks this on mount to decide whether to show the guided-writing toggle
-// at all — ANTHROPIC_API_KEY is server-only, so the client can't check it directly.
+// at all — GEMINI_API_KEY is server-only, so the client can't check it directly.
 export async function GET() {
-  return NextResponse.json({ available: anthropic !== null });
+  return NextResponse.json({ available: genAI !== null });
 }
 
 export async function POST(req: NextRequest) {
-  if (!anthropic) {
+  if (!genAI) {
     return NextResponse.json({ error: "Guided writing isn't available right now." }, { status: 503 });
   }
 
@@ -45,23 +45,16 @@ export async function POST(req: NextRequest) {
     .filter(Boolean)
     .join("\n");
 
-  const response = await anthropic.messages.create({
-    model: "claude-opus-5",
-    max_tokens: 2000,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `${context ? context + "\n\n" : ""}Here are my answers to a few reflective prompts. Draft the letter from them:\n\n${qa}`,
-      },
-    ],
+  const response = await genAI.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `${context ? context + "\n\n" : ""}Here are my answers to a few reflective prompts. Draft the letter from them:\n\n${qa}`,
+    config: {
+      systemInstruction: SYSTEM_PROMPT,
+      maxOutputTokens: 2000,
+    },
   });
 
-  const draft = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
+  const draft = response.text?.trim();
 
   if (!draft) {
     return NextResponse.json({ error: "Couldn't draft a letter — try again." }, { status: 502 });
