@@ -5,3 +5,5 @@ node_modules
 *.tsbuildinfo
 .claude/
 skills-lock.json
+.vercel
+.env*
