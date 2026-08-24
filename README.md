@@ -1,15 +1,18 @@
-# Time Capsule — MVP
+# Time Capsule
 
-The "Option A" flow from the product plan: no login, write a letter, pick a delivery date, done.
-Email delivery is **mocked** — nothing is actually sent yet, but the whole flow (write → seal →
-schedule → deliver → view) works end to end, so you can see and demo the real product before
-wiring up a live email provider.
+The "Option A" flow from the product plan: no login, write a letter, pick a delivery date, done —
+plus group recipients, photo/audio/video attachments, recurring letters, and an optional
+guided-writing helper. The whole flow (write → seal → schedule → deliver → view) works end to end
+with real email delivery.
 
 ## Stack
 
 - **Next.js 14** (App Router, TypeScript) — frontend + API routes together
 - **PostgreSQL**, accessed directly via [`pg`](https://node-postgres.com) (no ORM) — one
   `capsules` table (see `db/schema.sql`)
+- **Resend** — email delivery
+- **Vercel Blob** — photo/audio/video attachment storage
+- **Anthropic API** (optional) — drafts a letter from a few reflective prompts
 - **Tailwind CSS** — styling
 
 A note on the "no ORM" choice: Prisma was the original plan, but its engine binaries are fetched
@@ -108,20 +111,53 @@ process is running), not in the UI — check there first if a letter doesn't sho
 No code changes needed for any of this — every route already calls `sendCapsuleEmail()` in
 `mailer.ts`. Swapping providers later (SendGrid/Postmark/SES) means editing only that one file.
 
-## What's intentionally left out of this MVP
+## Group capsules
 
-Per the product plan, these are deliberately deferred rather than missing by accident:
+A letter can have up to 10 recipients (`recipientEmails` on the write form). Everyone gets the
+same email at the same moment — Resend's `to` field takes the whole list directly, so there's no
+per-recipient scheduling. `recipient_emails TEXT[]` on `capsules` is the source of truth for
+delivery and `/my-letters` lookups; the older `recipient_email` column stays populated (as
+`recipientEmails[0]`) for cheap display, but nothing reads it as authoritative anymore.
+
+## Media attachments (photo, audio, video)
+
+The write form accepts one photo, audio, or video file (≤25MB), uploaded directly from the
+browser to **Vercel Blob** via `upload()` in `src/app/page.tsx` — `src/app/api/upload/route.ts` is
+just the token-issuing handshake (`handleUpload`), so large files never pass through a Next.js
+function body. The resulting `media_url`/`media_type` render in the email as an `<img>` for
+photos, or a plain link for audio/video (inline `<audio>`/`<video>` tags aren't reliably supported
+across email clients).
+
+Requires a Blob store linked to the project — `vercel blob create-store <name> --access public`,
+then `vercel env pull` to get `BLOB_READ_WRITE_TOKEN` into `.env.local` for local dev (already
+auto-linked if you ran that command in this repo). Photos from before this feature existed still
+render via the legacy base64 `photo_data_url` column — no backfill was needed.
+
+## Recurring capsules
+
+Pick "Every year" or "Every month" on the write form and set a repeat-until date (capped at 20
+years out). On delivery, `spawnNextOccurrence()` in `src/lib/capsules.ts` clones the capsule with
+the next delivery date as a **new row** (linked back via `parent_capsule_id`) rather than mutating
+the original — so delivery history is preserved per occurrence, and both the manual "Deliver now"
+button and the daily cron job spawn the next one identically (they share `deliverCapsule()` in
+`src/lib/delivery.ts`).
+
+## Guided-writing agent
+
+Blank-page paralysis is a real drop-off point for a "write a letter" product. If `ANTHROPIC_API_KEY`
+is set, a "Not sure what to write? Let us help" toggle appears on the write form — three reflective
+prompts, answered, sent to `src/app/api/draft-letter/route.ts`, which asks Claude
+(`claude-opus-5`) to draft a letter from them. The draft lands in the same editable textarea; it's
+never submitted without the user reviewing and clicking "Seal & schedule" themselves. Without the
+key, the toggle simply doesn't render — the rest of the app is unaffected.
+
+## What's intentionally left out
 
 - **Real authentication** — `/my-letters` is a plain email lookup, not a secure login. Fine for a
   demo; before a real launch this should be a magic-link email instead (no passwords), so someone
   can't read another person's letters by guessing their email.
-- **Object storage for photos** — photos are stored as base64 in Postgres, capped at 2MB, for
-  simplicity. Swap `photo_data_url` for an S3/Cloudflare R2 URL before this needs to scale —
-  storing images in the database doesn't hold up past a small number of users.
-- **Group/shared capsules, audio/video, recurring capsules** — these are the premium-tier features
-  from the plan (Section 4) and the "Option B" account-based app — deliberately out of scope for
-  this first build.
-- **Rate limiting / spam prevention** on the public write form — needed before a real public launch.
+- **Rate limiting / spam prevention** on the public write form — needed before a real public
+  launch (relevant now more than ever with an LLM-backed endpoint in the mix).
 
 ## Deploying
 

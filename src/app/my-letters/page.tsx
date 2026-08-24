@@ -7,9 +7,12 @@ type CapsuleSummary = {
   id: string;
   title: string;
   senderEmail: string;
-  recipientEmail: string;
+  recipientEmails: string[];
   deliveryDate: string;
   status: "scheduled" | "delivered" | "failed";
+  mediaType: "photo" | "audio" | "video" | null;
+  recurrence: "none" | "yearly" | "monthly";
+  recurrenceEndDate: string | null;
   createdAt: string;
   deliveredAt: string | null;
 };
@@ -95,6 +98,8 @@ export default function MyLettersPage() {
             new Date(c.deliveryDate)
           );
           const isSender = c.senderEmail.toLowerCase() === email.toLowerCase();
+          const recurrenceBadge =
+            c.recurrence === "yearly" ? "🔁 yearly" : c.recurrence === "monthly" ? "🔁 monthly" : null;
 
           return (
             <li
@@ -104,8 +109,9 @@ export default function MyLettersPage() {
               <div>
                 <p className="font-medium">{c.title}</p>
                 <p className="text-xs text-ink/50">
-                  {isSender ? "To" : "From"} {isSender ? c.recipientEmail : c.senderEmail} ·{" "}
+                  {isSender ? "To" : "From"} {isSender ? c.recipientEmails.join(", ") : c.senderEmail} ·{" "}
                   {c.status === "delivered" ? "Delivered" : "Arrives"} {formattedDate}
+                  {recurrenceBadge && <> · {recurrenceBadge}</>}
                 </p>
               </div>
 

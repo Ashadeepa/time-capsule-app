@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCapsuleById, markDelivered } from "@/lib/capsules";
-import { sendCapsuleEmail } from "@/lib/mailer";
+import { getCapsuleById } from "@/lib/capsules";
+import { deliverCapsule } from "@/lib/delivery";
 
 /**
  * Manually trigger delivery of one capsule, regardless of its scheduled date.
@@ -20,8 +20,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: "This letter has already been delivered." }, { status: 409 });
   }
 
-  const { html } = await sendCapsuleEmail(capsule);
-  const updated = await markDelivered(capsule.id);
+  const { updated, html, spawned } = await deliverCapsule(capsule);
 
-  return NextResponse.json({ capsule: updated, previewHtml: html });
+  return NextResponse.json({ capsule: updated, previewHtml: html, spawnedId: spawned?.id ?? null });
 }

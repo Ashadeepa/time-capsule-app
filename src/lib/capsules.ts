@@ -1,16 +1,24 @@
 import { pool } from "@/lib/db";
 
 export type CapsuleStatus = "scheduled" | "delivered" | "failed";
+export type MediaType = "photo" | "audio" | "video";
+export type Recurrence = "none" | "yearly" | "monthly";
 
 export type Capsule = {
   id: string;
   senderEmail: string;
   recipientEmail: string;
+  recipientEmails: string[];
   title: string;
   message: string;
   photoDataUrl: string | null;
+  mediaUrl: string | null;
+  mediaType: MediaType | null;
   deliveryDate: Date;
   status: CapsuleStatus;
+  recurrence: Recurrence;
+  recurrenceEndDate: Date | null;
+  parentCapsuleId: string | null;
   createdAt: Date;
   deliveredAt: Date | null;
 };
@@ -27,11 +35,17 @@ function rowToCapsule(row: any): Capsule {
     id: row.id,
     senderEmail: row.sender_email,
     recipientEmail: row.recipient_email,
+    recipientEmails: row.recipient_emails,
     title: row.title,
     message: row.message,
     photoDataUrl: row.photo_data_url,
+    mediaUrl: row.media_url,
+    mediaType: row.media_type,
     deliveryDate: row.delivery_date,
     status: row.status,
+    recurrence: row.recurrence,
+    recurrenceEndDate: row.recurrence_end_date,
+    parentCapsuleId: row.parent_capsule_id,
     createdAt: row.created_at,
     deliveredAt: row.delivered_at,
   };
@@ -39,23 +53,36 @@ function rowToCapsule(row: any): Capsule {
 
 export async function createCapsule(input: {
   senderEmail: string;
-  recipientEmail: string;
+  recipientEmails: string[];
   title: string;
   message: string;
   deliveryDate: Date;
-  photoDataUrl: string | null;
+  photoDataUrl?: string | null;
+  mediaUrl?: string | null;
+  mediaType?: MediaType | null;
+  recurrence?: Recurrence;
+  recurrenceEndDate?: Date | null;
+  parentCapsuleId?: string | null;
 }): Promise<Capsule> {
   const { rows } = await pool.query(
-    `INSERT INTO capsules (sender_email, recipient_email, title, message, delivery_date, photo_data_url)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO capsules
+       (sender_email, recipient_email, recipient_emails, title, message, delivery_date,
+        photo_data_url, media_url, media_type, recurrence, recurrence_end_date, parent_capsule_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       input.senderEmail,
-      input.recipientEmail,
+      input.recipientEmails[0],
+      input.recipientEmails,
       input.title,
       input.message,
       input.deliveryDate,
-      input.photoDataUrl,
+      input.photoDataUrl ?? null,
+      input.mediaUrl ?? null,
+      input.mediaType ?? null,
+      input.recurrence ?? "none",
+      input.recurrenceEndDate ?? null,
+      input.parentCapsuleId ?? null,
     ]
   );
   return rowToCapsule(rows[0]);
@@ -69,7 +96,7 @@ export async function getCapsuleById(id: string): Promise<Capsule | null> {
 
 export async function listCapsulesByEmail(email: string): Promise<Capsule[]> {
   const { rows } = await pool.query(
-    `SELECT * FROM capsules WHERE sender_email = $1 OR recipient_email = $1 ORDER BY delivery_date ASC`,
+    `SELECT * FROM capsules WHERE sender_email = $1 OR $1 = ANY(recipient_emails) ORDER BY delivery_date ASC`,
     [email]
   );
   return rows.map(rowToCapsule);
@@ -92,4 +119,36 @@ export async function markDelivered(id: string): Promise<Capsule> {
 
 export async function markFailed(id: string): Promise<void> {
   await pool.query(`UPDATE capsules SET status = 'failed' WHERE id = $1`, [id]);
+}
+
+function nextDeliveryDate(from: Date, recurrence: Recurrence): Date {
+  const next = new Date(from);
+  if (recurrence === "yearly") next.setFullYear(next.getFullYear() + 1);
+  else if (recurrence === "monthly") next.setMonth(next.getMonth() + 1);
+  return next;
+}
+
+/**
+ * Clones a recurring capsule as its next occurrence. Returns null if the next
+ * date would fall after recurrence_end_date (series is over) or if the capsule
+ * isn't recurring — callers should treat null as "nothing to do".
+ */
+export async function spawnNextOccurrence(capsule: Capsule): Promise<Capsule | null> {
+  if (capsule.recurrence === "none") return null;
+
+  const next = nextDeliveryDate(capsule.deliveryDate, capsule.recurrence);
+  if (capsule.recurrenceEndDate && next > capsule.recurrenceEndDate) return null;
+
+  return createCapsule({
+    senderEmail: capsule.senderEmail,
+    recipientEmails: capsule.recipientEmails,
+    title: capsule.title,
+    message: capsule.message,
+    deliveryDate: next,
+    mediaUrl: capsule.mediaUrl,
+    mediaType: capsule.mediaType,
+    recurrence: capsule.recurrence,
+    recurrenceEndDate: capsule.recurrenceEndDate,
+    parentCapsuleId: capsule.id,
+  });
 }

@@ -27,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="flex-1">{children}</main>
         <footer className="border-t border-ink/10 py-6">
           <p className="max-w-2xl mx-auto px-6 text-xs text-ink/50">
-            Demo build — letters are simulated, not actually emailed. See the README to wire up real delivery.
+            Demo build — the &quot;Deliver now&quot; button on My letters skips ahead to send early. See the README for details.
           </p>
         </footer>
       </body>

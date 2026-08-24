@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findDueCapsules, markDelivered, markFailed } from "@/lib/capsules";
-import { sendCapsuleEmail } from "@/lib/mailer";
+import { findDueCapsules, markFailed } from "@/lib/capsules";
+import { deliverCapsule } from "@/lib/delivery";
 
 /**
  * This is the endpoint a real scheduler would hit once a day (Vercel Cron, a GitHub Action
@@ -26,9 +26,8 @@ export async function GET(req: NextRequest) {
   const results = [];
   for (const capsule of due) {
     try {
-      await sendCapsuleEmail(capsule);
-      await markDelivered(capsule.id);
-      results.push({ id: capsule.id, status: "delivered" });
+      const { spawned } = await deliverCapsule(capsule);
+      results.push({ id: capsule.id, status: "delivered", spawnedId: spawned?.id ?? null });
     } catch (err) {
       await markFailed(capsule.id);
       results.push({ id: capsule.id, status: "failed", error: String(err) });

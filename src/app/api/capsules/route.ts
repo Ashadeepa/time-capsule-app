@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createCapsule, listCapsulesByEmail } from "@/lib/capsules";
+import { createCapsule, listCapsulesByEmail, MediaType, Recurrence } from "@/lib/capsules";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_RECIPIENTS = 10;
+const MEDIA_TYPES: MediaType[] = ["photo", "audio", "video"];
+const RECURRENCES: Recurrence[] = ["none", "yearly", "monthly"];
+const MAX_RECURRENCE_YEARS = 20;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -10,14 +14,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { senderEmail, recipientEmail, title, message, deliveryDate, photoDataUrl } = body;
+  const {
+    senderEmail,
+    recipientEmails,
+    title,
+    message,
+    deliveryDate,
+    photoDataUrl,
+    mediaUrl,
+    mediaType,
+    recurrence,
+    recurrenceEndDate,
+  } = body;
 
   if (!senderEmail || !EMAIL_RE.test(senderEmail)) {
     return NextResponse.json({ error: "A valid sender email is required." }, { status: 400 });
   }
-  if (!recipientEmail || !EMAIL_RE.test(recipientEmail)) {
-    return NextResponse.json({ error: "A valid recipient email is required." }, { status: 400 });
+
+  if (!Array.isArray(recipientEmails) || recipientEmails.length === 0) {
+    return NextResponse.json({ error: "At least one recipient email is required." }, { status: 400 });
   }
+  if (recipientEmails.length > MAX_RECIPIENTS) {
+    return NextResponse.json({ error: `You can add at most ${MAX_RECIPIENTS} recipients.` }, { status: 400 });
+  }
+  const dedupedRecipients = [...new Set(recipientEmails.map((e) => String(e).trim().toLowerCase()))];
+  if (dedupedRecipients.some((e) => !EMAIL_RE.test(e))) {
+    return NextResponse.json({ error: "All recipient emails must be valid." }, { status: 400 });
+  }
+
   if (!title || typeof title !== "string" || title.length > 120) {
     return NextResponse.json({ error: "Title is required (max 120 characters)." }, { status: 400 });
   }
@@ -39,13 +63,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Photo is too large." }, { status: 400 });
   }
 
+  if (mediaUrl && (typeof mediaUrl !== "string" || !MEDIA_TYPES.includes(mediaType))) {
+    return NextResponse.json({ error: "A valid mediaType is required alongside mediaUrl." }, { status: 400 });
+  }
+
+  const resolvedRecurrence: Recurrence = recurrence ?? "none";
+  if (!RECURRENCES.includes(resolvedRecurrence)) {
+    return NextResponse.json({ error: "Invalid recurrence." }, { status: 400 });
+  }
+
+  let parsedRecurrenceEndDate: Date | null = null;
+  if (resolvedRecurrence !== "none") {
+    parsedRecurrenceEndDate = new Date(recurrenceEndDate);
+    if (isNaN(parsedRecurrenceEndDate.getTime()) || parsedRecurrenceEndDate <= parsedDate) {
+      return NextResponse.json(
+        { error: "A repeat-until date after the delivery date is required for recurring letters." },
+        { status: 400 }
+      );
+    }
+    const maxEndDate = new Date(parsedDate);
+    maxEndDate.setFullYear(maxEndDate.getFullYear() + MAX_RECURRENCE_YEARS);
+    if (parsedRecurrenceEndDate > maxEndDate) {
+      return NextResponse.json(
+        { error: `Recurring letters can repeat for at most ${MAX_RECURRENCE_YEARS} years.` },
+        { status: 400 }
+      );
+    }
+  }
+
   const capsule = await createCapsule({
     senderEmail,
-    recipientEmail,
+    recipientEmails: dedupedRecipients,
     title,
     message,
     deliveryDate: parsedDate,
     photoDataUrl: photoDataUrl ?? null,
+    mediaUrl: mediaUrl ?? null,
+    mediaType: mediaUrl ? mediaType : null,
+    recurrence: resolvedRecurrence,
+    recurrenceEndDate: parsedRecurrenceEndDate,
   });
 
   return NextResponse.json(capsule, { status: 201 });
@@ -60,16 +116,33 @@ export async function GET(req: NextRequest) {
   const capsules = await listCapsulesByEmail(email);
 
   // Trim to just what the list view needs (leave message/photo out of the list response).
-  const summaries = capsules.map(({ id, title, senderEmail, recipientEmail, deliveryDate, status, createdAt, deliveredAt }) => ({
-    id,
-    title,
-    senderEmail,
-    recipientEmail,
-    deliveryDate,
-    status,
-    createdAt,
-    deliveredAt,
-  }));
+  const summaries = capsules.map(
+    ({
+      id,
+      title,
+      senderEmail,
+      recipientEmails,
+      deliveryDate,
+      status,
+      mediaType,
+      recurrence,
+      recurrenceEndDate,
+      createdAt,
+      deliveredAt,
+    }) => ({
+      id,
+      title,
+      senderEmail,
+      recipientEmails,
+      deliveryDate,
+      status,
+      mediaType,
+      recurrence,
+      recurrenceEndDate,
+      createdAt,
+      deliveredAt,
+    })
+  );
 
   return NextResponse.json(summaries);
 }
