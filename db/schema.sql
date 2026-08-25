@@ -39,3 +39,12 @@ ALTER TABLE capsules ADD COLUMN IF NOT EXISTS recurrence TEXT NOT NULL DEFAULT '
 ALTER TABLE capsules ADD COLUMN IF NOT EXISTS recurrence_end_date TIMESTAMPTZ;
 ALTER TABLE capsules ADD COLUMN IF NOT EXISTS parent_capsule_id UUID REFERENCES capsules(id);
 CREATE INDEX IF NOT EXISTS idx_capsules_parent_capsule_id ON capsules (parent_capsule_id);
+
+-- Rate limiting: fixed-window counters keyed by "<route>:<ip>". Kept in Postgres rather than
+-- adding Redis, since request volume here doesn't warrant a separate service. See src/lib/rateLimit.ts.
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key          TEXT NOT NULL,
+  window_start TIMESTAMPTZ NOT NULL,
+  count        INT NOT NULL DEFAULT 1,
+  PRIMARY KEY (key, window_start)
+);

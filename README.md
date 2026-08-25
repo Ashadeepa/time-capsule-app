@@ -152,13 +152,28 @@ prompts, answered, sent to `src/app/api/draft-letter/route.ts`, which asks Gemin
 editable textarea; it's never submitted without the user reviewing and clicking "Seal & schedule"
 themselves. Without the key, the toggle simply doesn't render — the rest of the app is unaffected.
 
+## Guardrails
+
+- **Rate limiting** — `src/lib/rateLimit.ts` is a fixed-window limiter backed by a `rate_limits`
+  table in the same Postgres database (no Redis needed at this scale). Applied per-IP:
+  sealing letters (`POST /api/capsules`, 10/hour), looking letters up (`GET /api/capsules`,
+  30/hour), media uploads (`POST /api/upload`, 20/hour — only the browser-facing token request,
+  never Vercel Blob's own upload-completed callback), and drafting letters
+  (`POST /api/draft-letter`, 10/hour, since LLM calls cost money).
+- **Guided-writing input guardrails** — each of the three reflective answers is capped at 1000
+  characters, and the system prompt explicitly tells Gemini the answers are user-supplied content,
+  not instructions, and to ignore anything inside them that tries to redirect its behavior or
+  reveal the prompt (verified against a direct injection attempt during development). The route
+  also checks `promptFeedback.blockReason` and `candidates[0].finishReason` and returns a friendly
+  422 instead of a raw error if Gemini's own safety filtering blocks the input or output.
+- **Letter length cap** — `message` is capped at 20,000 characters on `POST /api/capsules`,
+  alongside the existing 120-character title cap and 25MB media cap.
+
 ## What's intentionally left out
 
 - **Real authentication** — `/my-letters` is a plain email lookup, not a secure login. Fine for a
   demo; before a real launch this should be a magic-link email instead (no passwords), so someone
   can't read another person's letters by guessing their email.
-- **Rate limiting / spam prevention** on the public write form — needed before a real public
-  launch (relevant now more than ever with an LLM-backed endpoint in the mix).
 
 ## Deploying
 

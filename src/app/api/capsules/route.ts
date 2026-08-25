@@ -1,13 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCapsule, listCapsulesByEmail, MediaType, Recurrence } from "@/lib/capsules";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_RECIPIENTS = 10;
+const MAX_MESSAGE_LENGTH = 20_000;
 const MEDIA_TYPES: MediaType[] = ["photo", "audio", "video"];
 const RECURRENCES: Recurrence[] = ["none", "yearly", "monthly"];
 const MAX_RECURRENCE_YEARS = 20;
+const WRITE_RATE_LIMIT = { max: 10, windowSeconds: 60 * 60 }; // 10 letters/hour/IP.
+const LOOKUP_RATE_LIMIT = { max: 30, windowSeconds: 60 * 60 }; // 30 lookups/hour/IP.
 
 export async function POST(req: NextRequest) {
+  const { allowed } = await checkRateLimit(`capsules-write:${getClientIp(req)}`, WRITE_RATE_LIMIT.max, WRITE_RATE_LIMIT.windowSeconds);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "You've sealed a lot of letters recently — try again later." },
+      { status: 429 }
+    );
+  }
+
   const body = await req.json().catch(() => null);
 
   if (!body) {
@@ -45,8 +57,11 @@ export async function POST(req: NextRequest) {
   if (!title || typeof title !== "string" || title.length > 120) {
     return NextResponse.json({ error: "Title is required (max 120 characters)." }, { status: 400 });
   }
-  if (!message || typeof message !== "string") {
-    return NextResponse.json({ error: "Letter message is required." }, { status: 400 });
+  if (!message || typeof message !== "string" || message.length > MAX_MESSAGE_LENGTH) {
+    return NextResponse.json(
+      { error: `Letter message is required (max ${MAX_MESSAGE_LENGTH} characters).` },
+      { status: 400 }
+    );
   }
 
   const parsedDate = new Date(deliveryDate);
@@ -108,6 +123,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const { allowed } = await checkRateLimit(`capsules-lookup:${getClientIp(req)}`, LOOKUP_RATE_LIMIT.max, LOOKUP_RATE_LIMIT.windowSeconds);
+  if (!allowed) {
+    return NextResponse.json({ error: "Too many lookups — try again later." }, { status: 429 });
+  }
+
   const email = req.nextUrl.searchParams.get("email");
   if (!email || !EMAIL_RE.test(email)) {
     return NextResponse.json({ error: "A valid ?email= query param is required." }, { status: 400 });
