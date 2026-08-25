@@ -55,6 +55,33 @@ function escapeHtml(input: string): string {
     .replace(/"/g, "&quot;");
 }
 
+export async function sendMagicLinkEmail(email: string, link: string): Promise<void> {
+  const html = `
+  <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 560px; margin: 0 auto; background: #FBF4E9; padding: 32px; border-radius: 12px; color: #2E2A26;">
+    <p style="font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #C1663B; margin-bottom: 4px;">Time Capsule</p>
+    <h1 style="font-size: 22px; margin: 0 0 16px;">Sign in to your letters</h1>
+    <p style="font-size: 16px; line-height: 1.7;">Click below to see the letters you've sent or are waiting to receive. This link works once and expires in 15 minutes.</p>
+    <p style="margin: 28px 0;"><a href="${link}" style="display: inline-block; background: #8A2E2E; color: #FBF4E9; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 15px;">View my letters</a></p>
+    <p style="font-size: 12px; color: #8a8073;">If you didn't request this, you can safely ignore this email.</p>
+  </div>`;
+
+  if (!resend) {
+    console.log(`[mock mailer] Would send magic link to ${email}: ${link}`);
+    return;
+  }
+
+  const { error } = await resend.emails.send({
+    from: process.env.EMAIL_FROM!,
+    to: email,
+    subject: "Sign in to Time Capsule",
+    html,
+  });
+
+  if (error) {
+    throw new Error(`Resend failed to send magic link to ${email}: ${error.message}`);
+  }
+}
+
 export async function sendCapsuleEmail(capsule: Capsule): Promise<{ html: string }> {
   const html = buildEmailHtml(capsule);
   const subject = buildSubject(capsule);

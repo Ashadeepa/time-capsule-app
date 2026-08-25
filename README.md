@@ -1,9 +1,9 @@
 # Time Capsule
 
-The "Option A" flow from the product plan: no login, write a letter, pick a delivery date, done —
-plus group recipients, photo/audio/video attachments, recurring letters, and an optional
-guided-writing helper. The whole flow (write → seal → schedule → deliver → view) works end to end
-with real email delivery.
+The "Option A" flow from the product plan: write a letter, pick a delivery date, done — no account
+needed to write one. Group recipients, photo/audio/video attachments, recurring letters, an
+optional guided-writing helper, and a magic-link sign-in for viewing your own letters. The whole
+flow (write → seal → schedule → deliver → view) works end to end with real email delivery.
 
 ## Stack
 
@@ -169,11 +169,21 @@ themselves. Without the key, the toggle simply doesn't render — the rest of th
 - **Letter length cap** — `message` is capped at 20,000 characters on `POST /api/capsules`,
   alongside the existing 120-character title cap and 25MB media cap.
 
-## What's intentionally left out
+## Authentication (magic link)
 
-- **Real authentication** — `/my-letters` is a plain email lookup, not a secure login. Fine for a
-  demo; before a real launch this should be a magic-link email instead (no passwords), so someone
-  can't read another person's letters by guessing their email.
+`/my-letters` requires signing in — no passwords, just a one-time link:
+
+1. Enter your email → `POST /api/auth/request-link` creates a single-use token (`magic_links`
+   table, 15-minute expiry) and emails a link via `sendMagicLinkEmail()` in `mailer.ts`.
+2. Clicking the link hits `GET /api/auth/verify`, which consumes the token (one use only), signs a
+   30-day session JWT with `jose` (`src/lib/auth.ts`), and sets it as an httpOnly cookie.
+3. `GET /api/capsules` reads the email **from that cookie only** — it no longer accepts an
+   `?email=` query param. This is the actual security fix: previously anyone could read anyone
+   else's letters just by typing their email into the lookup form.
+
+Requires `SESSION_SECRET` in `.env` (generate with `openssl rand -hex 32`) — changing it signs out
+every session. Both the link-request and verify endpoints are rate-limited (`src/lib/rateLimit.ts`)
+per-IP and per-email, so the flow can't be used to spam someone else's inbox with sign-in emails.
 
 ## Deploying
 

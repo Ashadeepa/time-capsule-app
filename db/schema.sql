@@ -48,3 +48,14 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   count        INT NOT NULL DEFAULT 1,
   PRIMARY KEY (key, window_start)
 );
+
+-- Magic-link auth: single-use, short-lived tokens for signing into /my-letters. See
+-- src/lib/auth.ts. The session itself is a signed cookie (no server-side session table needed).
+CREATE TABLE IF NOT EXISTS magic_links (
+  token      TEXT PRIMARY KEY,
+  email      TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_magic_links_email ON magic_links (email);

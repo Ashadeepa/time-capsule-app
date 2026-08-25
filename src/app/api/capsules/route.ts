@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCapsule, listCapsulesByEmail, MediaType, Recurrence } from "@/lib/capsules";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_RECIPIENTS = 10;
@@ -128,9 +129,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Too many lookups — try again later." }, { status: 429 });
   }
 
-  const email = req.nextUrl.searchParams.get("email");
-  if (!email || !EMAIL_RE.test(email)) {
-    return NextResponse.json({ error: "A valid ?email= query param is required." }, { status: 400 });
+  // The session's own email is the only email this endpoint will ever query for — a
+  // ?email= query param is not honored, so signing in as X can never list Y's letters.
+  const sessionToken = req.cookies.get(SESSION_COOKIE)?.value;
+  const email = sessionToken ? await verifySessionToken(sessionToken) : null;
+  if (!email) {
+    return NextResponse.json({ error: "Sign in to view your letters." }, { status: 401 });
   }
 
   const capsules = await listCapsulesByEmail(email);
