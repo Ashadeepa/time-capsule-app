@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCapsule, listCapsulesByEmail, MediaType, Recurrence } from "@/lib/capsules";
-import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { getClientIp } from "@/lib/rateLimit";
+import { guard, guardResponse } from "@/lib/abuseGuard";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -13,13 +14,9 @@ const WRITE_RATE_LIMIT = { max: 10, windowSeconds: 60 * 60 }; // 10 letters/hour
 const LOOKUP_RATE_LIMIT = { max: 30, windowSeconds: 60 * 60 }; // 30 lookups/hour/IP.
 
 export async function POST(req: NextRequest) {
-  const { allowed } = await checkRateLimit(`capsules-write:${getClientIp(req)}`, WRITE_RATE_LIMIT.max, WRITE_RATE_LIMIT.windowSeconds);
-  if (!allowed) {
-    return NextResponse.json(
-      { error: "You've sealed a lot of letters recently — try again later." },
-      { status: 429 }
-    );
-  }
+  const result = await guard(getClientIp(req), "capsules-write", WRITE_RATE_LIMIT.max, WRITE_RATE_LIMIT.windowSeconds);
+  const blockedResponse = guardResponse(result);
+  if (blockedResponse) return blockedResponse;
 
   const body = await req.json().catch(() => null);
 
@@ -124,10 +121,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const { allowed } = await checkRateLimit(`capsules-lookup:${getClientIp(req)}`, LOOKUP_RATE_LIMIT.max, LOOKUP_RATE_LIMIT.windowSeconds);
-  if (!allowed) {
-    return NextResponse.json({ error: "Too many lookups — try again later." }, { status: 429 });
-  }
+  const result = await guard(getClientIp(req), "capsules-lookup", LOOKUP_RATE_LIMIT.max, LOOKUP_RATE_LIMIT.windowSeconds);
+  const blockedResponse = guardResponse(result);
+  if (blockedResponse) return blockedResponse;
 
   // The session's own email is the only email this endpoint will ever query for — a
   // ?email= query param is not honored, so signing in as X can never list Y's letters.

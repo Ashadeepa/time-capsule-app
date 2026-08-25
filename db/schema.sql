@@ -59,3 +59,19 @@ CREATE TABLE IF NOT EXISTS magic_links (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_magic_links_email ON magic_links (email);
+
+-- Abuse response beyond plain rate limits: repeat rate-limit violations by the same
+-- identifier (IP or email) escalate to an actual block, and blocks/violations are visible
+-- for manual review at /admin. See src/lib/abuseGuard.ts.
+CREATE TABLE IF NOT EXISTS abuse_violations (
+  identifier  TEXT NOT NULL,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_abuse_violations_identifier ON abuse_violations (identifier, occurred_at);
+
+CREATE TABLE IF NOT EXISTS blocked_identifiers (
+  identifier    TEXT PRIMARY KEY,
+  reason        TEXT NOT NULL,
+  blocked_until TIMESTAMPTZ NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -168,6 +168,14 @@ themselves. Without the key, the toggle simply doesn't render — the rest of th
   422 instead of a raw error if Gemini's own safety filtering blocks the input or output.
 - **Letter length cap** — `message` is capped at 20,000 characters on `POST /api/capsules`,
   alongside the existing 120-character title cap and 25MB media cap.
+- **Abuse escalation beyond plain rate limits** — `src/lib/abuseGuard.ts` wraps the rate limiter:
+  every rejected request is logged as a violation against its identifier (IP or email), and 3
+  violations within 24 hours auto-blocks that identifier for 24 hours — across *every* guarded
+  route at once, not just the one that tripped it. Blocks and recent violations are reviewable
+  (and manually block/unblock-able) at `/admin`, protected by `ADMIN_SECRET`
+  (`Authorization: Bearer <ADMIN_SECRET>`). The admin endpoint's own auth attempts are rate-limited
+  separately, without the escalation path, so a mistyped secret can't lock the admin out of the
+  whole app.
 
 ## Authentication (magic link)
 

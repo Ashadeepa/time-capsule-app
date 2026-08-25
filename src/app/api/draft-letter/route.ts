@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { getClientIp } from "@/lib/rateLimit";
+import { guard, guardResponse } from "@/lib/abuseGuard";
 
 const PROMPTS = [
   "What's happening in your life right now that you want to remember?",
@@ -37,13 +38,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Guided writing isn't available right now." }, { status: 503 });
   }
 
-  const { allowed } = await checkRateLimit(`draft-letter:${getClientIp(req)}`, RATE_LIMIT.max, RATE_LIMIT.windowSeconds);
-  if (!allowed) {
-    return NextResponse.json(
-      { error: "You've hit the limit for drafting letters right now — try again in a bit." },
-      { status: 429 }
-    );
-  }
+  const result = await guard(getClientIp(req), "draft-letter", RATE_LIMIT.max, RATE_LIMIT.windowSeconds);
+  const blockedResponse = guardResponse(result);
+  if (blockedResponse) return blockedResponse;
 
   const body = await req.json().catch(() => null);
   if (!body) {
