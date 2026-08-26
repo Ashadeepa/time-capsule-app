@@ -5,6 +5,9 @@ needed to write one. Group recipients, photo/audio/video attachments, recurring 
 optional guided-writing helper, and a magic-link sign-in for viewing your own letters. The whole
 flow (write → seal → schedule → deliver → view) works end to end with real email delivery.
 
+**Live app:** https://time-capsule-app-nine.vercel.app
+**Proposal / roadmap:** https://claude.ai/code/artifact/cc91ae60-1018-4e05-a45a-db1e779ba815
+
 ## Stack
 
 - **Next.js 14** (App Router, TypeScript) — frontend + API routes together
