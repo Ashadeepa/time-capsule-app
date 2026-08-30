@@ -1,0 +1,78 @@
+name: Guided-writing evals
+
+# Runs the eval suite for the guided-writing (draft-letter) endpoint. Path-filtered so it only
+# fires on commits that could actually change its behavior — each run makes real Gemini API
+# calls (the prompt-injection checks specifically need a live model, not a mock).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/app/api/draft-letter/**"
+      - "src/lib/rateLimit.ts"
+      - "src/lib/abuseGuard.ts"
+      - "scripts/evals/draft-letter.mjs"
+      - "db/schema.sql"
+      - "package.json"
+      - "package-lock.json"
+  pull_request:
+    paths:
+      - "src/app/api/draft-letter/**"
+      - "src/lib/rateLimit.ts"
+      - "src/lib/abuseGuard.ts"
+      - "scripts/evals/draft-letter.mjs"
+      - "db/schema.sql"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch: {}
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Migrate test database
+        run: npm run db:migrate
+
+      - run: npm run build
+
+      - name: Start server
+        run: npm run start &
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/ > /dev/null && exit 0
+            sleep 1
+          done
+          echo "Server never became ready" >&2
+          exit 1
+
+      - name: Run evals
+        run: npm run eval:draft-letter
+        env:
+          BASE_URL: http://localhost:3000

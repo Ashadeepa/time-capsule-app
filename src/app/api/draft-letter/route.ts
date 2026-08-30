@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getClientIp } from "@/lib/rateLimit";
 import { guard, guardResponse } from "@/lib/abuseGuard";
+import { withRetry } from "@/lib/retry";
 
 const PROMPTS = [
   "What's happening in your life right now that you want to remember?",
@@ -67,14 +68,28 @@ export async function POST(req: NextRequest) {
     .filter(Boolean)
     .join("\n");
 
-  const response = await genAI.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: `${context ? context + "\n\n" : ""}Here are my answers to a few reflective prompts. Draft the letter from them:\n\n${qa}`,
-    config: {
-      systemInstruction: SYSTEM_PROMPT,
-      maxOutputTokens: 2000,
-    },
-  });
+  let response;
+  try {
+    response = await withRetry(
+      () =>
+        genAI.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: `${context ? context + "\n\n" : ""}Here are my answers to a few reflective prompts. Draft the letter from them:\n\n${qa}`,
+          config: {
+            systemInstruction: SYSTEM_PROMPT,
+            maxOutputTokens: 2000,
+          },
+        }),
+      { maxAttempts: 3, baseDelayMs: 400 }
+    );
+  } catch {
+    // Retries exhausted (or a non-retryable error, e.g. an auth/config problem) — surface a
+    // clean error instead of a raw 500 with a Gemini stack trace.
+    return NextResponse.json(
+      { error: "Guided writing is temporarily unavailable — try again shortly." },
+      { status: 503 }
+    );
+  }
 
   const blockReason = response.promptFeedback?.blockReason;
   const finishReason = response.candidates?.[0]?.finishReason;

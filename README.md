@@ -31,8 +31,9 @@ npm run dev                # open http://localhost:3000
 - **Recurring capsules** — yearly/monthly repeat, up to 20 years out; each delivery spawns the
   next occurrence (`spawnNextOccurrence()` in `src/lib/capsules.ts`).
 - **Guided writing** — optional AI-drafted letter from 3 reflective prompts (Gemini), shown only
-  when `GEMINI_API_KEY` is set. `npm run eval:draft-letter` regression-tests the prompt against
-  injection attempts and quality checks.
+  when `GEMINI_API_KEY` is set. The Gemini call retries transient failures (429/5xx, network
+  errors) with backoff (`src/lib/retry.ts`) before giving up. `npm run eval:draft-letter`
+  regression-tests the prompt against injection attempts and quality checks.
 - **Magic-link auth** — `/my-letters` requires a one-time emailed link (`src/lib/auth.ts`); the
   session cookie, not a query param, decides whose letters you see.
 - **Abuse guardrails** — rate limiting per route (`src/lib/rateLimit.ts`), repeat offenders
