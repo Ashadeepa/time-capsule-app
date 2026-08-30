@@ -166,9 +166,14 @@ themselves. Without the key, the toggle simply doesn't render — the rest of th
 - **Guided-writing input guardrails** — each of the three reflective answers is capped at 1000
   characters, and the system prompt explicitly tells Gemini the answers are user-supplied content,
   not instructions, and to ignore anything inside them that tries to redirect its behavior or
-  reveal the prompt (verified against a direct injection attempt during development). The route
-  also checks `promptFeedback.blockReason` and `candidates[0].finishReason` and returns a friendly
-  422 instead of a raw error if Gemini's own safety filtering blocks the input or output.
+  reveal the prompt. The route also checks `promptFeedback.blockReason` and
+  `candidates[0].finishReason` and returns a friendly 422 instead of a raw error if Gemini's own
+  safety filtering blocks the input or output.
+- **Guided-writing evals** — `npm run eval:draft-letter` (`scripts/evals/draft-letter.mjs`) runs 7
+  checks against a live server: validation edge cases (empty/too-long/missing answers), and —
+  against the real Gemini call — two live prompt-injection attempts (comply-with-a-fixed-output,
+  leak-the-system-prompt) plus a basic draft-quality check. Run it after touching the system prompt
+  or switching models to catch a regression before it ships.
 - **Letter length cap** — `message` is capped at 20,000 characters on `POST /api/capsules`,
   alongside the existing 120-character title cap and 25MB media cap.
 - **Abuse escalation beyond plain rate limits** — `src/lib/abuseGuard.ts` wraps the rate limiter:
